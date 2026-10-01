@@ -8,8 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -17,24 +19,30 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # Avoid obsolete package "tools" (causes sdkmanager exit code 1)
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: List project files
+        run: |
+          ls -la
+          ls -la app || echo "WARNING: app/ folder missing"
+
+      - name: Create Gradle wrapper if needed
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+          chmod +x gradlew
 
       - name: Build debug APK
-        run: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew assembleDebug --no-daemon
-          else
-            gradle wrapper --gradle-version 8.9
-            ./gradlew assembleDebug --no-daemon
-          fi
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MedTrackPNG-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
