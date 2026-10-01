@@ -1,0 +1,1 @@
+-keep class pg.medtrack.png.** { *; }

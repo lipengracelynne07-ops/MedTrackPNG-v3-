@@ -1,0 +1,636 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>MedTrack PNG</title>
+  <style>
+    :root{--g:#176b5b;--dark:#0b3d35;--bg:#f4f7f6;--card:#fff;--muted:#66756f;--danger:#b42318;--warn:#a15c00}*{box-sizing:border-box}html,body{margin:0;height:100%;font-family:Arial,sans-serif;background:var(--bg);color:#17201d}button,input,select,textarea{font:inherit}button{cursor:pointer}.app{height:100dvh;display:flex;flex-direction:column}.header{flex:0 0 auto;background:var(--dark);color:#fff;padding:15px 16px}.header small{opacity:.8}.content{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 90px}.nav{flex:0 0 auto;display:flex;overflow-x:auto;background:#fff;border-top:1px solid #dce5e1;padding:7px;gap:5px}.nav button{flex:0 0 auto;border:0;background:#fff;color:#40534d;padding:9px 12px;border-radius:10px}.nav button.active{background:#dcefe9;color:var(--dark);font-weight:700}.card{background:var(--card);border:1px solid #dce5e1;border-radius:14px;padding:15px;margin:0 0 12px;box-shadow:0 2px 7px #00000008}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.stat{padding:14px;border-radius:12px;background:#eef6f3}.stat b{display:block;font-size:25px;color:var(--dark)}.muted{color:var(--muted);font-size:13px}.row{display:flex;justify-content:space-between;gap:10px;align-items:center}.pill{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}.normal{background:#e5f4ed;color:#176b5b}.low{background:#fff1d9;color:var(--warn)}.out{background:#fde8e7;color:var(--danger)}.btn{border:0;border-radius:10px;padding:11px 14px;background:var(--g);color:#fff;font-weight:700}.btn.secondary{background:#e9efed;color:var(--dark)}.btn.danger{background:var(--danger)}.field{margin:10px 0}.field label{display:block;font-size:13px;font-weight:700;margin-bottom:5px}.field input,.field select,.field textarea{width:100%;padding:11px;border:1px solid #cdd9d5;border-radius:9px;background:#fff}.hidden{display:none!important}h1,h2,h3{margin:0 0 10px}.list{display:flex;flex-direction:column;gap:8px}.item{padding:12px;border:1px solid #e1e8e5;border-radius:10px;background:#fff}.login{height:100dvh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(#0b3d35,#176b5b)}.loginbox{background:#fff;border-radius:18px;padding:24px;width:min(430px,100%)}.logo{font-size:28px;font-weight:800;color:var(--dark);margin-bottom:4px}.error{color:var(--danger);font-size:13px;margin:8px 0}.table{width:100%;border-collapse:collapse;font-size:13px}.table th,.table td{text-align:left;padding:9px;border-bottom:1px solid #e3e9e7}.notice{padding:11px;border-radius:10px;background:#eef6f3;font-size:13px}.search{margin-bottom:10px}.empty{text-align:center;color:var(--muted);padding:28px}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const KEY='medtrack_v2_db';
+
+    const clearance={
+      CHW:['GEN','TOP','AM'],
+      NURSING:['GEN','TOP','AM','ABX_ORAL','INJ_EM'],
+      MIDWIFE:['GEN','TOP','AM','ABX_ORAL','INJ_EM'],
+      HEO:['GEN','TOP','AM','ABX_ORAL','ABX_INJ','INJ_EM','PROG'],
+      MO:['ALL'],
+      OTHER:['GEN']
+    };
+
+    const seed={
+      facility:{
+        name:'Kimadan Health Centre',
+        code:'KIM-HC-01',
+        province:'New Ireland Province',
+        district:'Namatanai',
+        llg:'Sentral Niu Ailan',
+        type:'Health Centre'
+      },
+      users:[
+        {username:'admin',name:'System Administrator',role:'SYSTEM_ADMIN',password:'admin123',department:'Administration',active:true},
+        {username:'dispenser',name:'Dispenser',role:'DISPENSER',password:'dispense123',department:'Pharmacy/Store',active:true},
+        {username:'store',name:'Store Officer',role:'STORE',password:'store123',department:'Store',active:true},
+        {username:'supervisor',name:'Supervisor',role:'SUPERVISOR',password:'super123',department:'Management',active:true},
+        {username:'clinical',name:'Clinical Staff',role:'CLINICAL',password:'clinical123',department:'Outpatients',title:'Nursing Officer',active:true},
+        {username:'viewer',name:'Viewer',role:'VIEWER',password:'viewer123',department:'Administration',active:true}
+      ],
+      medicines:[
+        {id:'M001',name:'Paracetamol',strength:'500 mg',form:'Tablet',code:'MDC-ANL-001',section:'Analgesics',ven:'E',category:'GEN',reorder:100,stock:0},
+        {id:'M002',name:'Amoxicillin',strength:'500 mg',form:'Capsule',code:'MDC-ABX-001',section:'Antibiotics',ven:'E',category:'ABX_ORAL',reorder:50,stock:0},
+        {id:'M003',name:'Artemether/Lumefantrine',strength:'20/120 mg',form:'Tablet',code:'MDC-AM-001',section:'Antimalarials',ven:'E',category:'AM',reorder:30,stock:0},
+        {id:'M004',name:'Hydrocortisone',strength:'100 mg',form:'Injection',code:'MDC-EM-001',section:'Emergency',ven:'E',category:'INJ_EM',reorder:10,stock:0}
+      ],
+      batches:[],
+      movements:[],
+      orders:[],
+      audit:[],
+      mdc:{edition:'11th Edition',year:2022}
+    };
+
+    function db(){
+      let x=localStorage.getItem(KEY);
+      if(!x)localStorage.setItem(KEY,JSON.stringify(seed));
+      return JSON.parse(localStorage.getItem(KEY))
+    }
+
+    function save(x){
+      localStorage.setItem(KEY,JSON.stringify(x))
+    }
+
+    let DB=db(),session=null;
+
+    function log(event,detail=''){
+      DB.audit.push({
+        id:Date.now(),
+        at:new Date().toISOString(),
+        user:session?.username||'system',
+        event,
+        detail
+      });
+      save(DB)
+    }
+
+    function roleCan(module){
+      let r=session.role;
+      const p={
+        SYSTEM_ADMIN:['home','medicines','catalogue','stock','orders','reports','admin'],
+        DISPENSER:['home','medicines','catalogue','stock','orders','reports'],
+        STORE:['home','medicines','catalogue','stock','orders','reports'],
+        SUPERVISOR:['home','medicines','catalogue','stock','orders','reports'],
+        CLINICAL:['home','medicines','catalogue','orders'],
+        VIEWER:['home','medicines','catalogue','reports']
+      };
+      return p[r]?.includes(module)
+    }
+
+    function render(){
+      document.getElementById('root').innerHTML=session?appShell():login();
+      if(session)home();
+    }
+
+    function login(){
+      return `<div class="login">
+        <div class="loginbox">
+          <div class="logo">MedTrack PNG</div>
+          <div class="muted">Kimadan Health Centre • v2.0.0</div>
+          <div class="field">
+            <label>Username</label>
+            <input id="u" autocomplete="username">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input id="p" type="password" autocomplete="current-password">
+          </div>
+          <div id="err" class="error"></div>
+          <button class="btn" style="width:100%" onclick="doLogin()">Sign in</button>
+          <div class="notice" style="margin-top:14px">
+            Offline-first field build. Data is stored on this device.
+          </div>
+        </div>
+      </div>`
+    }
+
+    function doLogin(){
+      let u=document.getElementById('u').value.trim(),
+          p=document.getElementById('p').value,
+          x=DB.users.find(a=>a.username===u&&a.active&&a.password===p);
+
+      if(!x){
+        document.getElementById('err').textContent='Invalid username or password.';
+        return
+      }
+
+      session={...x};
+      log('LOGIN_SUCCESS');
+      render()
+    }
+
+    function logout(){
+      log('LOGOUT');
+      session=null;
+      render()
+    }
+
+    function appShell(){
+      return `<div class="app">
+        <header class="header">
+          <div class="row">
+            <div>
+              <b>${DB.facility.name}</b><br>
+              <small>${session.name} • ${session.role}</small>
+            </div>
+            <button class="btn secondary" onclick="logout()">Logout</button>
+          </div>
+        </header>
+
+        <main id="content" class="content"></main>
+
+        <nav class="nav">
+          ${['home','medicines','catalogue','stock','orders','reports','admin']
+            .filter(roleCan)
+            .map(x=>`<button id="nav-${x}" onclick="${x}()">${label(x)}</button>`)
+            .join('')}
+        </nav>
+      </div>`
+    }
+
+    function label(x){
+      return ({
+        home:'Home',
+        medicines:'Medicines',
+        catalogue:'Catalogue',
+        stock:'Stock',
+        orders:'Orders',
+        reports:'Reports',
+        admin:'Admin'
+      })[x]
+    }
+
+    function setContent(html,tab){
+      document.getElementById('content').innerHTML=html;
+      document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+      document.getElementById('nav-'+tab)?.classList.add('active');
+      document.getElementById('content').scrollTop=0
+    }
+
+    function home(){
+      let low=DB.medicines.filter(m=>m.stock>0&&m.stock<=m.reorder).length,
+          out=DB.medicines.filter(m=>m.stock===0).length,
+          pending=DB.orders.filter(o=>o.status==='SUBMITTED').length;
+
+      setContent(`<h2>Dashboard</h2>
+        <p class="muted">Operational overview for ${DB.facility.code}</p>
+
+        <div class="grid">
+          <div class="stat"><span>Medicines</span><b>${DB.medicines.length}</b></div>
+          <div class="stat"><span>Low stock</span><b>${low}</b></div>
+          <div class="stat"><span>Out of stock</span><b>${out}</b></div>
+          <div class="stat"><span>Pending orders</span><b>${pending}</b></div>
+        </div>
+
+        <div class="card">
+          <h3>Expiry & FEFO alerts</h3>
+          <div id="alerts">${expiryAlerts()}</div>
+        </div>
+
+        <div class="card">
+          <h3>Facility</h3>
+          <div>${DB.facility.province} • ${DB.facility.district} • ${DB.facility.llg}</div>
+          <div class="muted">Offline local data • MDC reference ${DB.mdc.edition} (${DB.mdc.year})</div>
+        </div>`,'home')
+    }
+
+    function expiryAlerts(){
+      let now=Date.now(),
+          arr=DB.batches
+            .filter(b=>b.qty>0)
+            .map(b=>({...b,days:Math.ceil((new Date(b.expiry)-now)/86400000)}))
+            .filter(b=>b.days<=90)
+            .sort((a,b)=>a.days-b.days);
+
+      return arr.length
+        ?arr.map(b=>`<div class="item">
+            <div class="row">
+              <b>${medName(b.medId)}</b>
+              <span class="pill ${b.days<=0?'out':'low'}">
+                ${b.days<=0?'EXPIRED':b.days+' days'}
+              </span>
+            </div>
+            <div class="muted">Batch ${b.batch} • Qty ${b.qty} • Exp ${b.expiry}</div>
+          </div>`).join('')
+        :'<div class="empty">No batches within 90 days.</div>'
+    }
+
+    function medName(id){
+      return DB.medicines.find(m=>m.id===id)?.name||id
+    }
+
+    function medicines(){
+      setContent(`<h2>Medicines</h2>
+        <input class="search" id="ms" placeholder="Search medicine..." oninput="filterMeds()">
+        <div id="mlist" class="list"></div>`,'medicines');
+
+      filterMeds()
+    }
+
+    function filterMeds(){
+      let q=(document.getElementById('ms')?.value||'').toLowerCase();
+
+      document.getElementById('mlist').innerHTML=
+        DB.medicines
+        .filter(m=>(m.name+' '+m.strength+' '+m.form+' '+m.code).toLowerCase().includes(q))
+        .map(m=>{
+          let s=m.stock===0?'out':m.stock<=m.reorder?'low':'normal';
+
+          return `<div class="item">
+            <div class="row">
+              <b>${m.name}</b>
+              <span class="pill ${s}">
+                ${m.stock===0?'OUT':m.stock<=m.reorder?'LOW':'NORMAL'}
+              </span>
+            </div>
+            <div>${m.strength} • ${m.form}</div>
+            <div class="muted">${m.code} • ${m.section} • ${m.category} • On hand ${m.stock}</div>
+          </div>`
+        }).join('')
+        ||'<div class="empty">No medicines found.</div>'
+    }
+
+    function catalogue(){
+      setContent(`<h2>PNG MDC Catalogue</h2>
+        <p class="muted">Facility reference layer • ${DB.mdc.edition} (${DB.mdc.year})</p>
+        <input class="search" id="cs" placeholder="Search catalogue..." oninput="filterCat()">
+        <div id="clist" class="list"></div>`,'catalogue');
+
+      filterCat()
+    }
+
+    function filterCat(){
+      let q=(document.getElementById('cs')?.value||'').toLowerCase();
+
+      document.getElementById('clist').innerHTML=
+        DB.medicines
+        .filter(m=>(m.name+' '+m.code+' '+m.section+' '+m.form).toLowerCase().includes(q))
+        .map(m=>`<div class="item">
+          <b>${m.name}</b>
+          <div>${m.strength} • ${m.form}</div>
+          <div class="muted">MDC ${m.code} • ${m.section} • VEN ${m.ven}</div>
+        </div>`).join('')
+        ||'<div class="empty">No catalogue entries found.</div>'
+    }
+
+    function stock(){
+      let canReceive=['SYSTEM_ADMIN','DISPENSER','STORE'].includes(session.role);
+
+      setContent(`<h2>Stock</h2>
+        ${canReceive?`
+        <div class="card">
+          <h3>Receive stock</h3>
+
+          <div class="field">
+            <label>Medicine</label>
+            <select id="rm">
+              ${DB.medicines.map(m=>`<option value="${m.id}">${m.name} ${m.strength}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="grid">
+            <div class="field">
+              <label>Batch</label>
+              <input id="rb">
+            </div>
+
+            <div class="field">
+              <label>Quantity</label>
+              <input id="rq" type="number" min="1">
+            </div>
+          </div>
+
+          <div class="field">
+            <label>Expiry</label>
+            <input id="re" type="date">
+          </div>
+
+          <button class="btn" onclick="receive()">Receive</button>
+        </div>`:''}
+
+        <div class="card">
+          <h3>Current stock</h3>
+
+          <table class="table">
+            <tr>
+              <th>Medicine</th>
+              <th>On hand</th>
+              <th>Status</th>
+            </tr>
+
+            ${DB.medicines.map(m=>`<tr>
+              <td>${m.name}<br><span class="muted">${m.strength}</span></td>
+              <td>${m.stock}</td>
+              <td>${m.stock===0?'OUT':m.stock<=m.reorder?'LOW':'OK'}</td>
+            </tr>`).join('')}
+          </table>
+        </div>`,'stock')
+    }
+
+    function receive(){
+      let id=document.getElementById('rm').value,
+          b=document.getElementById('rb').value.trim(),
+          q=+document.getElementById('rq').value,
+          e=document.getElementById('re').value;
+
+      if(!b||!q||!e)
+        return alert('Complete batch, quantity and expiry.');
+
+      let m=DB.medicines.find(x=>x.id===id);
+
+      m.stock+=q;
+
+      DB.batches.push({
+        id:'B'+Date.now(),
+        medId:id,
+        batch:b,
+        qty:q,
+        expiry:e
+      });
+
+      DB.movements.push({
+        id:'MV'+Date.now(),
+        type:'RECEIPT',
+        medId:id,
+        qty:q,
+        batch:b,
+        at:new Date().toISOString(),
+        user:session.username
+      });
+
+      log('STOCK_RECEIPT',`${m.name} x${q}`);
+      save(DB);
+      stock()
+    }
+
+    function orders(){
+      let canReview=['SYSTEM_ADMIN','DISPENSER','STORE','SUPERVISOR'].includes(session.role);
+
+      setContent(`<h2>Internal Orders</h2>
+
+        ${session.role==='CLINICAL'||session.role==='SYSTEM_ADMIN'?orderForm():''}
+
+        <div class="card">
+          <h3>${canReview?'Dispenser / reviewer inbox':'My orders'}</h3>
+
+          <div class="list">
+            ${DB.orders.length
+              ?DB.orders.slice().reverse().map(o=>orderCard(o,canReview)).join('')
+              :'<div class="empty">No orders yet.</div>'}
+          </div>
+        </div>`,'orders')
+    }
+
+    function orderForm(){
+      return `<div class="card">
+        <h3>New internal order</h3>
+
+        <div class="grid">
+          <div class="field">
+            <label>Title</label>
+            <select id="ot">
+              <option>CHW</option>
+              <option>Nursing Officer</option>
+              <option>Midwife</option>
+              <option>HEO</option>
+              <option>MO</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Department</label>
+            <input id="od" value="${session.department||''}">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Urgency</label>
+          <select id="ou">
+            <option>Routine</option>
+            <option>Urgent</option>
+            <option>Emergency</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Medicine</label>
+          <select id="om">
+            ${DB.medicines.map(m=>`<option value="${m.id}">${m.name} — ${m.category}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Quantity</label>
+          <input id="oq" type="number" min="1" value="1">
+        </div>
+
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="on"></textarea>
+        </div>
+
+        <button class="btn" onclick="submitOrder()">Submit order</button>
+        <div id="orderMsg" class="muted" style="margin-top:8px"></div>
+      </div>`
+    }
+
+    function allowed(title,cat){
+      let k=title==='Nursing Officer'?'NURSING':title.toUpperCase();
+      return clearance[k]?.includes('ALL')||clearance[k]?.includes(cat)
+    }
+
+    function submitOrder(){
+      let title=document.getElementById('ot').value,
+          id=document.getElementById('om').value,
+          q=+document.getElementById('oq').value,
+          m=DB.medicines.find(x=>x.id===id);
+
+      if(!allowed(title,m.category)){
+        DB.audit.push({
+          id:Date.now(),
+          at:new Date().toISOString(),
+          user:session.username,
+          event:'BLOCKED_ORDER_ATTEMPT',
+          detail:`${title} attempted ${m.name} (${m.category})`
+        });
+
+        save(DB);
+
+        document.getElementById('orderMsg').textContent=
+          'Blocked: this title is not cleared for the selected medicine category.';
+
+        return
+      }
+
+      let o={
+        id:'ORD'+Date.now(),
+        requester:session.username,
+        title,
+        department:document.getElementById('od').value,
+        urgency:document.getElementById('ou').value,
+        notes:document.getElementById('on').value,
+        status:'SUBMITTED',
+        lines:[{medId:id,qty:q}],
+        createdAt:new Date().toISOString()
+      };
+
+      DB.orders.push(o);
+      log('ORDER_SUBMITTED',o.id);
+      save(DB);
+      orders()
+    }
+
+    function orderCard(o,review){
+      let line=o.lines[0],
+          m=DB.medicines.find(x=>x.id===line.medId);
+
+      return `<div class="item">
+        <div class="row">
+          <b>${o.id}</b>
+          <span class="pill ${o.status==='REJECTED'?'out':o.status==='APPROVED'?'normal':'low'}">
+            ${o.status}
+          </span>
+        </div>
+
+        <div>${m?.name||line.medId} × ${line.qty}</div>
+
+        <div class="muted">
+          ${o.title} • ${o.department} • ${o.urgency} •
+          ${new Date(o.createdAt).toLocaleString()}
+        </div>
+
+        ${review&&o.status==='SUBMITTED'?`
+        <div style="margin-top:9px;display:flex;gap:7px">
+          <button class="btn" onclick="reviewOrder('${o.id}','APPROVED')">Approve</button>
+          <button class="btn danger" onclick="reviewOrder('${o.id}','REJECTED')">Reject</button>
+        </div>`:''}
+      </div>`
+    }
+
+    function reviewOrder(id,status){
+      let o=DB.orders.find(x=>x.id===id);
+
+      o.status=status;
+      o.reviewedBy=session.username;
+      o.reviewedAt=new Date().toISOString();
+
+      log('ORDER_'+status,id);
+      save(DB);
+      orders()
+    }
+
+    function reports(){
+      let receipts=DB.movements.filter(x=>x.type==='RECEIPT').length,
+          disp=DB.movements.filter(x=>x.type==='DISPENSE').length;
+
+      setContent(`<h2>Reports & Export</h2>
+
+        <div class="grid">
+          <div class="stat"><span>Receipts</span><b>${receipts}</b></div>
+          <div class="stat"><span>Dispenses</span><b>${disp}</b></div>
+        </div>
+
+        <div class="card">
+          <h3>Data export</h3>
+          <p class="muted">
+            Export the local operational database as JSON for backup or reporting.
+          </p>
+          <button class="btn" onclick="exportJSON()">Export JSON</button>
+        </div>
+
+        <div class="card">
+          <h3>Audit events</h3>
+          <div class="list">
+            ${DB.audit.slice(-20).reverse().map(a=>`
+              <div class="item">
+                <b>${a.event}</b>
+                <div class="muted">
+                  ${a.user} • ${new Date(a.at).toLocaleString()} • ${a.detail}
+                </div>
+              </div>`).join('')
+              ||'<div class="empty">No audit events.</div>'}
+          </div>
+        </div>`,'reports')
+    }
+
+    function exportJSON(){
+      let blob=new Blob(
+        [JSON.stringify(DB,null,2)],
+        {type:'application/json'}
+      ),
+      a=document.createElement('a');
+
+      a.href=URL.createObjectURL(blob);
+      a.download='medtrack-kimadan-backup.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+
+      log('DATA_EXPORT','JSON')
+    }
+
+    function admin(){
+      setContent(`<h2>Administration</h2>
+
+        <div class="card">
+          <h3>Users</h3>
+
+          <table class="table">
+            <tr>
+              <th>User</th>
+              <th>Role</th>
+              <th>Status</th>
+            </tr>
+
+            ${DB.users.map(u=>`
+              <tr>
+                <td>${u.username}<br><span class="muted">${u.name}</span></td>
+                <td>${u.role}</td>
+                <td>${u.active?'Active':'Disabled'}</td>
+              </tr>`).join('')}
+          </table>
+        </div>
+
+        <div class="card">
+          <h3>Facility</h3>
+          <div class="muted">${DB.facility.name} • ${DB.facility.code}</div>
+          <p>${DB.facility.province} • ${DB.facility.district} • ${DB.facility.llg}</p>
+        </div>
+
+        <div class="card">
+          <h3>Policy</h3>
+          <p class="muted">
+            Current title × category policy is enforced at order submission.
+            Production deployments should allow controlled policy editing with an audit trail.
+          </p>
+        </div>
+
+        <div class="card">
+          <button class="btn danger" onclick="resetDemo()">Reset local demo data</button>
+        </div>`,'admin')
+    }
+
+    function resetDemo(){
+      if(confirm('Reset all local MedTrack demo data?')){
+        localStorage.removeItem(KEY);
+        DB=db();
+        log('RESET_DATA');
+        render()
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>
